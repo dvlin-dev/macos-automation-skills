@@ -1,42 +1,41 @@
-# AX 策略说明
+# AX 执行策略
 
-## 背景
+## 目标
 
-AX（Accessibility）能力用于 UI 元素查询和动作执行。它依赖一个外部可执行文件 `ax`。
+- 保持零配置可运行。
+- 避免安装阶段引入额外网络下载。
+- 在运行阶段提供预热与兜底。
 
-## 策略目标
+## 执行链路
 
-- 不在 `postinstall` 阶段下载依赖，避免影响 MCP/包安装时延和超时。
-- 在运行阶段兜底：
-  1. 启动预热（可选）
-  2. 调用前再检查一次（强制）
-
-## 推荐流程
-
-1. 服务启动后，执行预热：
+1. 可选预热：
 
 ```bash
 python scripts/check_env.py --prewarm-ax
 ```
 
-2. 真正执行 AX 前，再调用：
+2. 单独检查/下载：
 
 ```bash
 python scripts/ensure_ax.py
 ```
 
-3. 若仍失败，返回 `DEPENDENCY_MISSING`，并附带明确 hint。
+3. 真实调用：
 
-## 自动下载配置示例
+```bash
+python scripts/accessibility_query.py --payload-json '{"command":"query"}'
+```
+
+## 自动下载配置
 
 ```bash
 export MACOS_KIT_AX_AUTO_INSTALL=true
 export MACOS_KIT_AX_DOWNLOAD_URL='https://example.com/ax/{platform}/{arch}/ax'
-export MACOS_KIT_AX_CACHE_DIR='~/.cache/moryflow/macos-kit/bin'
-python scripts/ensure_ax.py
+export MACOS_KIT_AX_CACHE_DIR='~/.cache/macos-automation-skill/bin'
 ```
 
-## 设计取舍
+## 失败处理
 
-- **优点**：不拖慢安装；首次使用前可预热；调用时有兜底。
-- **代价**：首次命中下载时会增加一次运行时延迟。
+- 返回 `DEPENDENCY_MISSING`：未找到二进制，检查下载地址与网络。
+- 返回 `FEATURE_DISABLED`：`MACOS_KIT_ENABLE_AX_QUERY` 被关闭。
+- 返回 `EXECUTION_TIMEOUT`：提高超时或缩小查询范围。

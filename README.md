@@ -8,8 +8,10 @@
 skills/
   macos-automation/
     SKILL.md
+    agents/
     scripts/
     references/
+    assets/
 ```
 
 ## 安装方式
@@ -25,8 +27,8 @@ npx skills add dvlin-dev/macos-automation-skills --skill macos-automation
 ## 技能说明
 
 - `macos-automation`
-  - macOS 自动化执行工作流（AppleScript/JXA）
-  - 环境预检与权限探测
-  - 模板检索与渲染
-  - 原始脚本风险分级控制（strict / balanced / off）
-  - AX 可执行文件检查与运行时自动下载策略
+  - 完整覆盖 macOS 自动化工具面（39 个工具名入口）
+  - 统一调度入口：`scripts/macos_automation.py`
+  - 模板检索 / 渲染 / 执行与原始脚本执行双模式
+  - 环境预检、权限探测、风险分级控制（strict / balanced / off）
+  - AX 可执行文件检查与运行时自动下载兜底

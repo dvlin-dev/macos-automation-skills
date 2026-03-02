@@ -21,7 +21,7 @@ from _shared import (
 )
 
 DEFAULT_TIMEOUT_SECONDS = 15
-DEFAULT_CACHE_DIR = "~/.cache/moryflow/macos-kit/bin"
+DEFAULT_CACHE_DIR = "~/.cache/macos-automation-skill/bin"
 
 
 def build_download_url(template: str) -> str:

@@ -1,112 +1,82 @@
 ---
 name: macos-automation
-description: 在 macOS 上执行 AppleScript/JXA 自动化任务。适用于应用控制、Finder/剪贴板、日历、邮件、消息、快捷指令、通知，以及需要 accessibility_query 的 UI 自动化场景。
+description: 在 macOS 上执行端到端自动化任务：应用控制、系统设置、Finder/剪贴板、Shortcuts、Calendar、Notes、Mail、Messages、通知、Pages，以及基于 AX 的 UI 查询与动作。遇到 AppleScript/JXA、快捷指令编排、UI 自动化、模板执行、权限诊断、脚本安全控制、或需要把自然语言动作转为可执行自动化时，使用此 skill。
 ---
 
 # macOS Automation
 
-这个 skill 用于把 macOS 自动化需求稳定落地为可执行流程，默认采用“先模板、后原始脚本”的策略，并提供权限预检、风险分级、AX 依赖兜底。
+优先用统一入口完成任务，同时保留自由脚本模式，确保“能快速落地 + 能深度定制”。
 
-## 何时使用
+## 执行规则
 
-在以下情况必须使用本 skill：
+1. 先跑环境预检。
+2. 优先走模板或语义工具。
+3. 需要灵活性时退回原始脚本。
+4. 涉及 UI 层时走 AX 查询并自动兜底依赖。
+5. 命中安全策略时先改写脚本，再决定是否降级策略。
 
-- 用户要求操作 macOS 应用（打开/退出 app、系统设置、Finder、Notes、Mail、Messages 等）。
-- 用户要求执行 AppleScript 或 JXA。
-- 任务涉及快捷指令（Shortcuts）或系统通知。
-- 任务需要读取/操作界面元素，属于 accessibility（AX）自动化。
-
-## 标准执行流程
-
-### 1) 环境预检（先做）
+## 快速开始
 
 ```bash
 python scripts/check_env.py --prewarm-ax
+python scripts/macos_automation.py list-tools
+python scripts/macos_automation.py call --tool get_frontmost_app --input-json '{}'
 ```
 
-- 若 `automation_probe` 失败，先提示用户授权：系统设置 > 隐私与安全性 > 自动化/辅助功能。
-- 若 `ax_binary` 失败，按返回 hint 处理（安装 ax 或配置下载地址）。
+## 三种调用模式
 
-### 2) 模板优先（默认路径）
+### 1) 语义工具模式（推荐）
 
-1. 列出模板：
+直接调用工具名，让 skill 自行完成“模板选择 + 占位符替换 + 执行”。
 
 ```bash
-python scripts/template_tool.py list --kb-path /path/to/knowledge-base
+python scripts/macos_automation.py call \
+  --tool run_shortcut \
+  --input-json '{"name":"启动闪念"}'
 ```
 
-2. 搜索模板：
+### 2) 模板编排模式（中等自由度）
+
+当你知道模板 ID，直接调用 `run_macos_template`，可控性更高。
 
 ```bash
-python scripts/template_tool.py search --kb-path /path/to/knowledge-base --query "shortcuts"
+python scripts/macos_automation.py call \
+  --tool run_macos_template \
+  --input-json '{"template_id":"system_launch_app","input_data":{"name":"Reminders"}}'
 ```
 
-3. 渲染模板并输出脚本文件：
+### 3) 原始脚本模式（最高自由度）
+
+当模板不覆盖需求时，直接运行 AppleScript/JXA。
 
 ```bash
-python scripts/template_tool.py render \
-  --kb-path /path/to/knowledge-base \
-  --template-id shortcuts_run_shortcut \
-  --input-json '{"name":"启动闪念"}' \
-  --include-shared-handlers \
-  --output-script-file /tmp/run_shortcut.applescript
+python scripts/macos_automation.py call \
+  --tool run_macos_script \
+  --input-json '{"script_content":"tell application \"Finder\" to get name of startup disk"}'
 ```
 
-### 3) 执行脚本
+## AX 自动化
 
-- 执行渲染后的文件：
+先确保 AX 依赖可用，再执行查询或动作。
 
 ```bash
-python scripts/run_macos_script.py --script-file /tmp/run_shortcut.applescript
+python scripts/accessibility_query.py \
+  --payload-json '{"command":"query","locator":{"role":"AXWindow"}}'
 ```
 
-- 直接执行原始脚本内容：
+## 安全策略
 
-```bash
-python scripts/run_macos_script.py \
-  --language applescript \
-  --script 'tell application "Finder" to get name of startup disk'
-```
+- `balanced`（默认）：阻断关键危险命令。
+- `strict`：额外阻断 `curl | sh` 与二进制脚本文件。
+- `off`：关闭风险扫描，仅在用户明确授权后使用。
 
-### 4) AX 查询（需要 UI 自动化时）
+执行被阻断时，先解释风险并给出等价安全替代方案。
 
-先确保 ax 可执行文件可用：
+## 资源导航
 
-```bash
-python scripts/ensure_ax.py
-```
-
-若找不到 ax，可配置自动下载：
-
-```bash
-MACOS_KIT_AX_AUTO_INSTALL=true \
-MACOS_KIT_AX_DOWNLOAD_URL='https://example.com/ax/{platform}/{arch}/ax' \
-python scripts/ensure_ax.py
-```
-
-## 安全与默认策略
-
-- 默认 `safe_mode=balanced`：阻断关键危险命令（如 `rm -rf /`、`mkfs`、`shutdown -h`、`reboot`）。
-- `strict`：在 `balanced` 基础上额外阻断 `curl | sh`，并拒绝二进制脚本文件。
-- `off`：关闭风险扫描（仅在用户明确要求且风险可控时使用）。
-- 默认不限制脚本路径；只有设置 `MACOS_KIT_ALLOWED_SCRIPT_ROOTS` 后才启用白名单限制。
-
-遇到风险命中时：
-
-1. 先向用户解释命中规则与风险。
-2. 若用户坚持，建议改写为等价但更安全的命令。
-3. 仅在用户明确授权后，才考虑降级到 `safe_mode=off`。
-
-## 故障处理规则
-
-- `PERMISSION_DENIED`：引导用户检查自动化/辅助功能授权。
-- `EXECUTION_TIMEOUT`：缩小执行范围或提高超时（不超过 `MACOS_KIT_MAX_TIMEOUT_SECONDS`）。
-- `DEPENDENCY_MISSING`（AX）：安装 ax 或配置下载地址模板。
-- `SAFETY_BLOCKED`：优先改写脚本；不要静默绕过。
-
-## 资源索引
-
-- 配置说明：`references/config-matrix.md`
+- 工具能力面：`references/tool-surface.md`
+- 能力覆盖矩阵：`references/coverage-matrix.md`
+- 配置矩阵：`references/config-matrix.md`
 - 模板目录：`references/template-catalog.md`
 - AX 策略：`references/ax-strategy.md`
-- 可执行脚本：`scripts/check_env.py`、`scripts/template_tool.py`、`scripts/run_macos_script.py`、`scripts/ensure_ax.py`
+- 内置知识库：`assets/knowledge-base/`

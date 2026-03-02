@@ -3,11 +3,16 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 from pathlib import Path
 from typing import Any
 
 from _shared import build_failure, build_success, print_json, substitute_placeholders
+from run_macos_script import execute_script
+
+SCRIPT_DIR = Path(__file__).resolve().parent
+DEFAULT_KB_ROOT = SCRIPT_DIR.parent / "assets" / "knowledge-base"
 
 CODE_BLOCK_PATTERN = re.compile(r"```(applescript|javascript)\s*\n([\s\S]*?)\n```", re.IGNORECASE)
 FRONTMATTER_PATTERN = re.compile(r"^---\n([\s\S]*?)\n---\n", re.MULTILINE)
@@ -62,13 +67,26 @@ def parse_template_file(path: Path) -> dict[str, Any] | None:
     }
 
 
+def parse_category_info(category_path: Path) -> str:
+    info_file = category_path / "_category_info.md"
+    if not info_file.exists():
+        return f"{category_path.name} 自动化脚本模板"
+
+    raw = info_file.read_text(encoding="utf-8")
+    frontmatter = parse_frontmatter(raw)
+    description = frontmatter.get("description")
+    if isinstance(description, str) and description.strip():
+        return description.strip()
+    return f"{category_path.name} 自动化脚本模板"
+
+
 def load_shared_handlers(kb_root: Path, language: str) -> list[str]:
     handler_dir = kb_root / "_shared_handlers"
     if not handler_dir.exists() or not handler_dir.is_dir():
         return []
 
-    extensions = {"applescript": ".applescript", "javascript": ".js"}
-    target_ext = extensions[language]
+    extension_map = {"applescript": ".applescript", "javascript": ".js"}
+    target_ext = extension_map[language]
 
     handlers: list[str] = []
     for path in sorted(handler_dir.iterdir()):
@@ -92,102 +110,135 @@ def load_templates(kb_root: Path) -> list[dict[str, Any]]:
     return templates
 
 
+def load_categories(kb_root: Path, templates: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    categories: list[dict[str, Any]] = []
+    for category_dir in sorted(kb_root.iterdir()):
+        if not category_dir.is_dir() or category_dir.name.startswith("_"):
+            continue
+        category_id = category_dir.name
+        categories.append(
+            {
+                "id": category_id,
+                "description": parse_category_info(category_dir),
+                "count": len([item for item in templates if item["category"] == category_id]),
+            }
+        )
+    return categories
+
+
+def summarize_template(item: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "id": item["id"],
+        "title": item["title"],
+        "category": item["category"],
+        "description": item["description"],
+        "language": item["language"],
+        "keywords": item["keywords"],
+        "argumentsPrompt": item["arguments_prompt"],
+    }
+
+
 def get_kb_root(path_text: str | None) -> Path:
     if path_text:
         return Path(path_text).expanduser().resolve()
-    return Path.cwd()
+    return DEFAULT_KB_ROOT
 
 
-def list_templates(args: argparse.Namespace) -> dict[str, Any]:
-    kb_root = get_kb_root(args.kb_path)
-    if not kb_root.exists() or not kb_root.is_dir():
-        return build_failure("INVALID_INPUT", f"知识库目录不存在: {kb_root}")
+def parse_json_object(raw_json: str, field_name: str) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    try:
+        parsed = json.loads(raw_json)
+    except json.JSONDecodeError as error:
+        return None, build_failure("INVALID_INPUT", f"{field_name} 不是合法 JSON: {error}")
 
+    if not isinstance(parsed, dict):
+        return None, build_failure("INVALID_INPUT", f"{field_name} 必须是 JSON 对象")
+
+    return parsed, None
+
+
+def list_categories_data(kb_root: Path) -> dict[str, Any]:
     templates = load_templates(kb_root)
-    if args.category:
-        templates = [item for item in templates if item["category"] == args.category]
+    categories = load_categories(kb_root, templates)
+    return build_success({"kb_path": str(kb_root), "categories": categories})
 
-    summaries = [
-        {
-            "id": item["id"],
-            "title": item["title"],
-            "category": item["category"],
-            "description": item["description"],
-            "language": item["language"],
-            "keywords": item["keywords"],
-        }
-        for item in templates
-    ]
+
+def list_templates_data(
+    kb_root: Path,
+    *,
+    category: str | None = None,
+    limit: int | None = None,
+) -> dict[str, Any]:
+    templates = load_templates(kb_root)
+    if category:
+        templates = [item for item in templates if item["category"] == category]
+    if limit is not None and limit > 0:
+        templates = templates[:limit]
+
+    summaries = [summarize_template(item) for item in templates]
     return build_success({"kb_path": str(kb_root), "count": len(summaries), "templates": summaries})
 
 
-def search_templates(args: argparse.Namespace) -> dict[str, Any]:
-    kb_root = get_kb_root(args.kb_path)
-    if not kb_root.exists() or not kb_root.is_dir():
-        return build_failure("INVALID_INPUT", f"知识库目录不存在: {kb_root}")
-
-    query = args.query.strip().lower()
-    if not query:
-        return build_failure("INVALID_INPUT", "query 不能为空")
-
+def search_templates_data(
+    kb_root: Path,
+    *,
+    query: str | None,
+    category: str | None,
+    limit: int,
+) -> dict[str, Any]:
     templates = load_templates(kb_root)
-    matched: list[dict[str, Any]] = []
-    for item in templates:
-        searchable = " ".join(
-            [
-                item["id"],
-                item["title"],
-                item["description"],
-                item["category"],
-                " ".join(item["keywords"] if isinstance(item["keywords"], list) else []),
-            ]
-        ).lower()
-        if query in searchable:
-            matched.append(item)
 
+    if category:
+        templates = [item for item in templates if item["category"] == category]
+
+    matched: list[dict[str, Any]] = []
+    normalized_query = (query or "").strip().lower()
+
+    if not normalized_query:
+        matched = templates
+    else:
+        for item in templates:
+            searchable = " ".join(
+                [
+                    item["id"],
+                    item["title"],
+                    item["description"],
+                    item["category"],
+                    " ".join(item["keywords"] if isinstance(item["keywords"], list) else []),
+                    item.get("arguments_prompt") or "",
+                    item.get("notes") or "",
+                ]
+            ).lower()
+            if normalized_query in searchable:
+                matched.append(item)
+
+    limited = matched[: max(1, limit)]
     return build_success(
         {
             "kb_path": str(kb_root),
-            "query": args.query,
-            "count": len(matched),
-            "templates": [
-                {
-                    "id": item["id"],
-                    "title": item["title"],
-                    "category": item["category"],
-                    "description": item["description"],
-                    "language": item["language"],
-                    "keywords": item["keywords"],
-                }
-                for item in matched
-            ],
+            "query": query,
+            "category": category,
+            "total": len(limited),
+            "templates": [summarize_template(item) for item in limited],
         }
     )
 
 
-def render_template(args: argparse.Namespace) -> dict[str, Any]:
-    kb_root = get_kb_root(args.kb_path)
-    if not kb_root.exists() or not kb_root.is_dir():
-        return build_failure("INVALID_INPUT", f"知识库目录不存在: {kb_root}")
-
+def render_template_data(
+    kb_root: Path,
+    *,
+    template_id: str,
+    input_data: dict[str, Any],
+    args: list[str],
+    include_shared_handlers: bool,
+    output_script_file: str | None,
+) -> dict[str, Any]:
     templates = load_templates(kb_root)
-    target = next((item for item in templates if item["id"] == args.template_id), None)
+    target = next((item for item in templates if item["id"] == template_id), None)
     if not target:
-        return build_failure("NOT_FOUND", f"模板不存在: {args.template_id}")
-
-    input_data: dict[str, Any] = {}
-    if args.input_json:
-        try:
-            parsed = json.loads(args.input_json)
-        except json.JSONDecodeError as error:
-            return build_failure("INVALID_INPUT", f"input_json 不是合法 JSON: {error}")
-        if isinstance(parsed, dict):
-            input_data = parsed
-        else:
-            return build_failure("INVALID_INPUT", "input_json 必须是 JSON 对象")
+        return build_failure("NOT_FOUND", f"模板不存在: {template_id}")
 
     script = target["script"]
-    if args.include_shared_handlers:
+    if include_shared_handlers:
         handlers = load_shared_handlers(kb_root, target["language"])
         if handlers:
             script = "\n\n".join([*handlers, script])
@@ -196,10 +247,10 @@ def render_template(args: argparse.Namespace) -> dict[str, Any]:
         script=script,
         language=target["language"],
         input_data=input_data,
-        args=args.arg,
+        args=args,
     )
 
-    payload = {
+    payload: dict[str, Any] = {
         "template": {
             "id": target["id"],
             "title": target["title"],
@@ -210,8 +261,8 @@ def render_template(args: argparse.Namespace) -> dict[str, Any]:
         "rendered_script": rendered,
     }
 
-    if args.output_script_file:
-        output_path = Path(args.output_script_file).expanduser().resolve()
+    if output_script_file:
+        output_path = Path(output_script_file).expanduser().resolve()
         output_path.parent.mkdir(parents=True, exist_ok=True)
         output_path.write_text(rendered, encoding="utf-8")
         payload["output_script_file"] = str(output_path)
@@ -219,17 +270,72 @@ def render_template(args: argparse.Namespace) -> dict[str, Any]:
     return build_success(payload)
 
 
+def execute_template_data(
+    kb_root: Path,
+    *,
+    template_id: str,
+    input_data: dict[str, Any],
+    args: list[str],
+    include_shared_handlers: bool,
+    timeout_seconds: int | None,
+    safe_mode: str | None,
+    default_timeout_seconds: int,
+    max_timeout_seconds: int,
+) -> dict[str, Any]:
+    render_result = render_template_data(
+        kb_root,
+        template_id=template_id,
+        input_data=input_data,
+        args=args,
+        include_shared_handlers=include_shared_handlers,
+        output_script_file=None,
+    )
+    if not render_result["ok"]:
+        return render_result
+
+    rendered_data = render_result["data"]
+    execution_result, ok = execute_script(
+        script_content=rendered_data["rendered_script"],
+        script_file=None,
+        language=rendered_data["template"]["language"],
+        script_args=args,
+        timeout_seconds=timeout_seconds,
+        safe_mode=safe_mode,
+        enable_raw_script=os.getenv("MACOS_KIT_ENABLE_RAW_SCRIPT", "true"),
+        default_timeout_seconds=default_timeout_seconds,
+        max_timeout_seconds=max_timeout_seconds,
+    )
+    if not ok:
+        return execution_result
+
+    return build_success(
+        {
+            "template": rendered_data["template"],
+            "stdout": execution_result["data"]["stdout"],
+            "stderr": execution_result["data"]["stderr"],
+            "language": execution_result["data"]["language"],
+            "timeout_seconds": execution_result["data"]["timeout_seconds"],
+        }
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(description="macos-kit 知识库模板工具")
+    parser = argparse.ArgumentParser(description="macOS 自动化模板工具")
     subparsers = parser.add_subparsers(dest="command", required=True)
+
+    categories_parser = subparsers.add_parser("categories", help="列出自动化分类")
+    categories_parser.add_argument("--kb-path", default=None, help="知识库根目录")
 
     list_parser = subparsers.add_parser("list", help="列出模板")
     list_parser.add_argument("--kb-path", default=None, help="知识库根目录")
     list_parser.add_argument("--category", default=None, help="按分类过滤")
+    list_parser.add_argument("--limit", type=int, default=None, help="限制结果数量")
 
     search_parser = subparsers.add_parser("search", help="搜索模板")
     search_parser.add_argument("--kb-path", default=None, help="知识库根目录")
-    search_parser.add_argument("--query", required=True, help="关键词")
+    search_parser.add_argument("--query", default=None, help="关键词")
+    search_parser.add_argument("--category", default=None, help="按分类过滤")
+    search_parser.add_argument("--limit", type=int, default=10, help="返回数量")
 
     render_parser = subparsers.add_parser("render", help="渲染模板并替换占位符")
     render_parser.add_argument("--kb-path", default=None, help="知识库根目录")
@@ -241,7 +347,37 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="自动拼接 _shared_handlers 中同语言公共脚本",
     )
-    render_parser.add_argument("--output-script-file", default=None, help="将渲染后的脚本写入文件")
+    render_parser.add_argument("--output-script-file", default=None, help="写入渲染后的脚本")
+
+    execute_parser = subparsers.add_parser("execute", help="渲染并执行模板")
+    execute_parser.add_argument("--kb-path", default=None, help="知识库根目录")
+    execute_parser.add_argument("--template-id", required=True, help="模板 ID")
+    execute_parser.add_argument("--input-json", default="{}", help="JSON 形式的输入参数")
+    execute_parser.add_argument("--arg", action="append", default=[], help="模板参数，可重复")
+    execute_parser.add_argument(
+        "--include-shared-handlers",
+        action="store_true",
+        help="自动拼接 _shared_handlers 中同语言公共脚本",
+    )
+    execute_parser.add_argument("--timeout-seconds", type=int, default=None, help="执行超时")
+    execute_parser.add_argument(
+        "--safe-mode",
+        choices=["strict", "balanced", "off"],
+        default=os.getenv("MACOS_KIT_SAFE_MODE", "balanced"),
+        help="执行风险策略",
+    )
+    execute_parser.add_argument(
+        "--default-timeout-seconds",
+        type=int,
+        default=int(os.getenv("MACOS_KIT_DEFAULT_TIMEOUT_SECONDS", "30")),
+        help="默认超时",
+    )
+    execute_parser.add_argument(
+        "--max-timeout-seconds",
+        type=int,
+        default=int(os.getenv("MACOS_KIT_MAX_TIMEOUT_SECONDS", "120")),
+        help="最大超时",
+    )
 
     return parser
 
@@ -250,12 +386,46 @@ def main() -> int:
     parser = build_parser()
     args = parser.parse_args()
 
-    if args.command == "list":
-        result = list_templates(args)
+    kb_root = get_kb_root(getattr(args, "kb_path", None))
+    if not kb_root.exists() or not kb_root.is_dir():
+        result = build_failure("INVALID_INPUT", f"知识库目录不存在: {kb_root}")
+        print_json(result)
+        return 1
+
+    if args.command == "categories":
+        result = list_categories_data(kb_root)
+    elif args.command == "list":
+        result = list_templates_data(kb_root, category=args.category, limit=args.limit)
     elif args.command == "search":
-        result = search_templates(args)
+        result = search_templates_data(
+            kb_root,
+            query=args.query,
+            category=args.category,
+            limit=args.limit,
+        )
     elif args.command == "render":
-        result = render_template(args)
+        input_data, error = parse_json_object(args.input_json, "input_json")
+        result = error or render_template_data(
+            kb_root,
+            template_id=args.template_id,
+            input_data=input_data or {},
+            args=args.arg,
+            include_shared_handlers=args.include_shared_handlers,
+            output_script_file=args.output_script_file,
+        )
+    elif args.command == "execute":
+        input_data, error = parse_json_object(args.input_json, "input_json")
+        result = error or execute_template_data(
+            kb_root,
+            template_id=args.template_id,
+            input_data=input_data or {},
+            args=args.arg,
+            include_shared_handlers=args.include_shared_handlers,
+            timeout_seconds=args.timeout_seconds,
+            safe_mode=args.safe_mode,
+            default_timeout_seconds=args.default_timeout_seconds,
+            max_timeout_seconds=args.max_timeout_seconds,
+        )
     else:
         result = build_failure("INVALID_INPUT", f"不支持的命令: {args.command}")
 
