@@ -23,6 +23,7 @@
 | `MACOS_KIT_AX_BINARY_PATH` | `ax` | AX 可执行文件命令或路径 |
 | `MACOS_KIT_AX_AUTO_INSTALL` | `true` | 未命中本地 ax 时是否自动下载 |
 | `MACOS_KIT_AX_DOWNLOAD_URL` | 空 | 下载地址模板，支持 `{platform}`、`{arch}` |
+| `MACOS_KIT_AX_DOWNLOAD_SHA256` | 空 | AX 下载内容 SHA256 校验值（推荐配置） |
 | `MACOS_KIT_AX_CACHE_DIR` | `~/.cache/macos-automation-skill/bin` | AX 缓存目录 |
 
 ## 推荐策略

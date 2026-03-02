@@ -13,6 +13,7 @@ from _shared import (
     build_success,
     clamp_timeout,
     is_binary_file,
+    normalize_safe_mode,
     parse_bool,
     parse_csv_paths,
     print_json,
@@ -35,7 +36,9 @@ def execute_script(
     default_timeout_seconds: int | None = None,
     max_timeout_seconds: int | None = None,
 ) -> tuple[dict[str, Any], bool]:
-    resolved_safe_mode = safe_mode or os.getenv("MACOS_KIT_SAFE_MODE", "balanced")
+    resolved_safe_mode = normalize_safe_mode(
+        safe_mode or os.getenv("MACOS_KIT_SAFE_MODE", "balanced")
+    )
     resolved_default_timeout = default_timeout_seconds or int(
         os.getenv("MACOS_KIT_DEFAULT_TIMEOUT_SECONDS", "30")
     )
@@ -63,6 +66,17 @@ def execute_script(
                 "FEATURE_DISABLED",
                 "run_macos_script 未开启",
                 hint="设置 MACOS_KIT_ENABLE_RAW_SCRIPT=true 后重试",
+                retryable=False,
+            ),
+            False,
+        )
+
+    if not resolved_safe_mode:
+        return (
+            build_failure(
+                "INVALID_INPUT",
+                "safe_mode 取值无效",
+                hint="仅支持 strict / balanced / off",
                 retryable=False,
             ),
             False,

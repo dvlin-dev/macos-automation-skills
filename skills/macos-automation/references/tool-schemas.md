@@ -11,6 +11,7 @@
 
 ```bash
 python scripts/generate_tool_schemas.py
+python scripts/generate_tool_schemas.py --check
 ```
 
 可指定输出路径：

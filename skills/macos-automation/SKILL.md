@@ -65,6 +65,8 @@ python scripts/accessibility_query.py \
   --payload-json '{"command":"query","locator":{"role":"AXWindow"}}'
 ```
 
+若启用自动下载，优先配置 `MACOS_KIT_AX_DOWNLOAD_SHA256` 做完整性校验。
+
 ## 安全策略
 
 - `balanced`（默认）：阻断关键危险命令。

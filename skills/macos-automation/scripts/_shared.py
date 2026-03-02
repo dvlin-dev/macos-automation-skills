@@ -23,6 +23,7 @@ PERMISSION_PATTERN = re.compile(
     r"not authorized|errAEEventNotPermitted|errAEAccessDenied|-1743|-10004|assistive devices",
     re.IGNORECASE,
 )
+SAFE_MODE_OPTIONS = {"strict", "balanced", "off"}
 
 
 def parse_bool(value: Any, default: bool = False) -> bool:
@@ -107,6 +108,13 @@ def scan_risk(mode: str, content: str) -> str | None:
     return None
 
 
+def normalize_safe_mode(value: str | None, default: str = "balanced") -> str | None:
+    candidate = (value or default).strip().lower()
+    if candidate in SAFE_MODE_OPTIONS:
+        return candidate
+    return None
+
+
 def to_applescript_literal(value: Any) -> str:
     if value is None:
         return "missing value"
@@ -173,6 +181,26 @@ def substitute_placeholders(
         if args and 0 <= index < len(args):
             value = args[index]
         return value_to_literal(value, language)
+
+    def replace_quoted_input(match: re.Match[str]) -> str:
+        key = match.group(2)
+        return value_to_literal(input_value(key), language)
+
+    def replace_quoted_arg(match: re.Match[str]) -> str:
+        index = int(match.group(2)) - 1
+        value = args[index] if args and 0 <= index < len(args) else None
+        return value_to_literal(value, language)
+
+    rendered = re.sub(
+        r"""(["'])--MCP_INPUT:(\w+)\1""",
+        replace_quoted_input,
+        rendered,
+    )
+    rendered = re.sub(
+        r"""(["'])--MCP_ARG_(\d+)\1""",
+        replace_quoted_arg,
+        rendered,
+    )
 
     rendered = re.sub(r"--MCP_INPUT:(\w+)", replace_input, rendered)
     rendered = re.sub(r"--MCP_ARG_(\d+)", replace_arg, rendered)
