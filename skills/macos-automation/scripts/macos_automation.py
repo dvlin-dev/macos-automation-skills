@@ -4,6 +4,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+from pathlib import Path
 from typing import Any
 
 from _shared import build_failure, build_success, print_json
@@ -16,55 +17,11 @@ from template_tool import (
     list_categories_data,
     search_templates_data,
 )
-
-TEMPLATE_TOOL_MAP: dict[str, str] = {
-    "calendar_add_event": "calendar_calendar_add_event",
-    "calendar_list_today": "calendar_calendar_list_today",
-    "get_clipboard": "clipboard_get_clipboard",
-    "set_clipboard": "clipboard_set_clipboard",
-    "clear_clipboard": "clipboard_clear_clipboard",
-    "get_selected_files": "finder_get_selected_files",
-    "search_files": "finder_search_files",
-    "quick_look_file": "finder_quick_look_file",
-    "iterm_run": "iterm_iterm_run",
-    "iterm_paste_clipboard": "iterm_iterm_paste_clipboard",
-    "mail_create_email": "mail_mail_create_email",
-    "mail_list_emails": "mail_mail_list_emails",
-    "mail_get_email": "mail_mail_get_email",
-    "messages_list_chats": "messages_messages_list_chats",
-    "messages_get_messages": "messages_messages_get_messages",
-    "messages_search_messages": "messages_messages_search_messages",
-    "messages_compose_message": "messages_messages_compose_message",
-    "notes_create": "notes_notes_create",
-    "notes_create_raw_html": "notes_notes_create_raw_html",
-    "notes_list": "notes_notes_list",
-    "notes_get": "notes_notes_get",
-    "notes_search": "notes_notes_search",
-    "send_notification": "notifications_send_notification",
-    "toggle_do_not_disturb": "notifications_toggle_do_not_disturb",
-    "create_pages_document": "pages_create_pages_document",
-    "run_shortcut": "shortcuts_run_shortcut",
-    "list_shortcuts": "shortcuts_list_shortcuts",
-    "get_frontmost_app": "system_get_frontmost_app",
-    "launch_app": "system_launch_app",
-    "quit_app": "system_quit_app",
-    "set_system_volume": "system_set_system_volume",
-    "toggle_dark_mode": "system_toggle_dark_mode",
-    "get_battery_status": "system_get_battery_status",
-}
-
-CORE_TOOLS = [
-    "list_macos_automation_categories",
-    "search_macos_automation_tips",
-    "run_macos_template",
-    "run_macos_script",
-    "check_macos_permissions",
-    "accessibility_query",
-]
+from tool_schemas import TEMPLATE_TOOL_MAP, build_tool_catalog, export_tool_schemas
 
 
 def all_tool_names() -> list[str]:
-    return [*CORE_TOOLS, *sorted(TEMPLATE_TOOL_MAP.keys())]
+    return sorted(build_tool_catalog().keys())
 
 
 def parse_json_payload(raw: str) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
@@ -248,7 +205,25 @@ def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="macOS 自动化统一工具入口")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    subparsers.add_parser("list-tools", help="列出可调用工具")
+    list_parser = subparsers.add_parser("list-tools", help="列出可调用工具")
+    list_parser.add_argument("--kb-path", default=None, help="知识库目录（用于推断模板参数）")
+    list_parser.add_argument(
+        "--with-schema",
+        action="store_true",
+        help="包含 input_schema 字段",
+    )
+
+    describe_parser = subparsers.add_parser("describe-tool", help="查看单个工具的输入 schema")
+    describe_parser.add_argument("--tool", required=True, help="工具名")
+    describe_parser.add_argument("--kb-path", default=None, help="知识库目录（用于推断模板参数）")
+
+    export_parser = subparsers.add_parser("export-tool-schemas", help="导出机器可读工具 schema 清单")
+    export_parser.add_argument("--kb-path", default=None, help="知识库目录（用于推断模板参数）")
+    export_parser.add_argument(
+        "--output-file",
+        default=str(Path(__file__).resolve().parent.parent / "assets" / "tool-schemas.json"),
+        help="输出 JSON 文件路径",
+    )
 
     call_parser = subparsers.add_parser("call", help="按工具名调用")
     call_parser.add_argument("--tool", required=True, help="工具名")
@@ -269,9 +244,36 @@ def main() -> int:
     args = parser.parse_args()
 
     if args.command == "list-tools":
-        tools = [{"name": name, "type": "template"} for name in sorted(TEMPLATE_TOOL_MAP)]
-        tools = [{"name": name, "type": "core"} for name in CORE_TOOLS] + tools
+        catalog = build_tool_catalog(args.kb_path)
+        tools: list[dict[str, Any]] = []
+        for name in sorted(catalog.keys()):
+            item = catalog[name]
+            output_item = {
+                "name": item["name"],
+                "type": item["type"],
+                "title": item["title"],
+                "description": item["description"],
+            }
+            if item.get("template_id"):
+                output_item["template_id"] = item["template_id"]
+            if args.with_schema:
+                output_item["input_schema"] = item["input_schema"]
+            tools.append(output_item)
         print_json(build_success({"count": len(tools), "tools": tools}))
+        return 0
+
+    if args.command == "describe-tool":
+        catalog = build_tool_catalog(args.kb_path)
+        tool = catalog.get(args.tool)
+        if not tool:
+            print_json(build_failure("NOT_FOUND", f"未知工具: {args.tool}"))
+            return 1
+        print_json(build_success({"tool": tool}))
+        return 0
+
+    if args.command == "export-tool-schemas":
+        payload = export_tool_schemas(kb_path=args.kb_path, output_path=args.output_file)
+        print_json(build_success({"output_file": str(Path(args.output_file).expanduser().resolve()), **payload}))
         return 0
 
     payload, error = parse_json_payload(args.input_json)

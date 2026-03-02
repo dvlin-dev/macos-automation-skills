@@ -29,6 +29,7 @@ npx skills add dvlin-dev/macos-automation-skills --skill macos-automation
 - `macos-automation`
   - 完整覆盖 macOS 自动化工具面（39 个工具名入口）
   - 统一调度入口：`scripts/macos_automation.py`
+  - 提供机器可读 schema：`assets/tool-schemas.json`
   - 模板检索 / 渲染 / 执行与原始脚本执行双模式
   - 环境预检、权限探测、风险分级控制（strict / balanced / off）
   - AX 可执行文件检查与运行时自动下载兜底

@@ -20,6 +20,7 @@ description: 在 macOS 上执行端到端自动化任务：应用控制、系统
 ```bash
 python scripts/check_env.py --prewarm-ax
 python scripts/macos_automation.py list-tools
+python scripts/macos_automation.py describe-tool --tool run_macos_script
 python scripts/macos_automation.py call --tool get_frontmost_app --input-json '{}'
 ```
 
@@ -76,7 +77,9 @@ python scripts/accessibility_query.py \
 
 - 工具能力面：`references/tool-surface.md`
 - 能力覆盖矩阵：`references/coverage-matrix.md`
+- 工具输入 schema：`references/tool-schemas.md`
 - 配置矩阵：`references/config-matrix.md`
 - 模板目录：`references/template-catalog.md`
 - AX 策略：`references/ax-strategy.md`
 - 内置知识库：`assets/knowledge-base/`
+- 机器可读 schema 清单：`assets/tool-schemas.json`

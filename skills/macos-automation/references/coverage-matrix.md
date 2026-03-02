@@ -20,6 +20,7 @@
 ## 实现入口
 
 - 统一入口：`scripts/macos_automation.py`
+- schema 能力：`scripts/tool_schemas.py`、`scripts/generate_tool_schemas.py`、`assets/tool-schemas.json`
 - 细粒度脚本：
   - `scripts/template_tool.py`
   - `scripts/run_macos_script.py`

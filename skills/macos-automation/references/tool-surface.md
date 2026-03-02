@@ -29,6 +29,9 @@
 
 ```bash
 python scripts/macos_automation.py list-tools
+python scripts/macos_automation.py list-tools --with-schema
+python scripts/macos_automation.py describe-tool --tool run_macos_script
+python scripts/macos_automation.py export-tool-schemas
 
 python scripts/macos_automation.py call \
   --tool launch_app \
