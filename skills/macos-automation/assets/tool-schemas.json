@@ -45,6 +45,9 @@
           "ax_download_url": {
             "type": "string"
           },
+          "ax_download_sha256": {
+            "type": "string"
+          },
           "ax_cache_dir": {
             "type": "string"
           }
@@ -288,6 +291,9 @@
             ]
           },
           "ax_download_url": {
+            "type": "string"
+          },
+          "ax_download_sha256": {
             "type": "string"
           },
           "ax_cache_dir": {

@@ -11,6 +11,11 @@ from typing import Any
 from _shared import build_failure, build_success, print_json, substitute_placeholders
 from run_macos_script import execute_script
 
+try:
+    import yaml
+except ModuleNotFoundError:  # pragma: no cover - optional dependency
+    yaml = None
+
 SCRIPT_DIR = Path(__file__).resolve().parent
 DEFAULT_KB_ROOT = SCRIPT_DIR.parent / "assets" / "knowledge-base"
 
@@ -18,25 +23,73 @@ CODE_BLOCK_PATTERN = re.compile(r"```(applescript|javascript)\s*\n([\s\S]*?)\n``
 FRONTMATTER_PATTERN = re.compile(r"^---\n([\s\S]*?)\n---\n", re.MULTILINE)
 
 
-def parse_frontmatter(raw: str) -> dict[str, Any]:
-    match = FRONTMATTER_PATTERN.match(raw)
-    if not match:
-        return {}
-
+def parse_frontmatter_fallback(frontmatter_text: str) -> dict[str, Any]:
     result: dict[str, Any] = {}
-    for line in match.group(1).splitlines():
-        if not line.strip() or ":" not in line:
+    lines = frontmatter_text.splitlines()
+    block_key: str | None = None
+    block_lines: list[str] = []
+
+    def flush_block() -> None:
+        nonlocal block_key, block_lines
+        if block_key is not None:
+            result[block_key] = "\n".join(block_lines).strip()
+        block_key = None
+        block_lines = []
+
+    for raw_line in lines:
+        line = raw_line.rstrip("\n")
+        stripped = line.strip()
+
+        if block_key is not None:
+            if line.startswith(" ") or line.startswith("\t") or not stripped:
+                block_lines.append(stripped)
+                continue
+            flush_block()
+
+        if not stripped or stripped.startswith("#"):
             continue
+        if line.startswith(" ") or line.startswith("\t"):
+            continue
+        if ":" not in line:
+            continue
+
         key, value = line.split(":", 1)
         key = key.strip()
         value = value.strip()
+
+        if value in {"|", ">", "|-", ">-", "|+", ">+"}:
+            block_key = key
+            block_lines = []
+            continue
 
         if value.startswith("[") and value.endswith("]"):
             items = [item.strip().strip('"\'') for item in value[1:-1].split(",")]
             result[key] = [item for item in items if item]
         else:
             result[key] = value.strip('"\'')
+
+    flush_block()
     return result
+
+
+def parse_frontmatter(raw: str) -> dict[str, Any]:
+    match = FRONTMATTER_PATTERN.match(raw)
+    if not match:
+        return {}
+
+    frontmatter_text = match.group(1)
+    if yaml is None:
+        return parse_frontmatter_fallback(frontmatter_text)
+
+    try:
+        parsed = yaml.safe_load(frontmatter_text)
+    except yaml.YAMLError:
+        return parse_frontmatter_fallback(frontmatter_text)
+
+    if not isinstance(parsed, dict):
+        return {}
+
+    return parsed
 
 
 def parse_template_file(path: Path) -> dict[str, Any] | None:

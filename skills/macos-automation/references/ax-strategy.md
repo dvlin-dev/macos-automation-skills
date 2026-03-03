@@ -31,11 +31,13 @@ python scripts/accessibility_query.py --payload-json '{"command":"query"}'
 ```bash
 export MACOS_KIT_AX_AUTO_INSTALL=true
 export MACOS_KIT_AX_DOWNLOAD_URL='https://example.com/ax/{platform}/{arch}/ax'
+export MACOS_KIT_AX_DOWNLOAD_SHA256='<expected_sha256>'
 export MACOS_KIT_AX_CACHE_DIR='~/.cache/macos-automation-skill/bin'
 ```
 
 ## 失败处理
 
 - 返回 `DEPENDENCY_MISSING`：未找到二进制，检查下载地址与网络。
+- 返回 `INVALID_INPUT`：`MACOS_KIT_AX_DOWNLOAD_SHA256` 非法。
 - 返回 `FEATURE_DISABLED`：`MACOS_KIT_ENABLE_AX_QUERY` 被关闭。
 - 返回 `EXECUTION_TIMEOUT`：提高超时或缩小查询范围。

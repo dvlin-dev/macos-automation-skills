@@ -1,8 +1,79 @@
-# macos-automation-skills
+<p align="right">
+  <strong>English</strong> | <a href="./README.zh-CN.md">简体中文</a>
+</p>
 
-按 `vercel-labs/skills` 生态约定组织的技能仓库，当前包含 1 个技能：`macos-automation`。
+# macos-automation-skills — agent skills for macOS automation workflows
 
-## 目录结构
+A skills repository for macOS automation, built for the open skills ecosystem.
+
+This repo currently ships one production-ready skill: `macos-automation`, with a unified tool surface, script execution engine, template knowledge base, AX integration, and machine-readable input schemas.
+
+## Installation
+
+### Option 1: Install from repository
+
+```bash
+# list installable skills
+npx skills add dvlin-dev/macos-automation-skills --list
+
+# install the macOS automation skill
+npx skills add dvlin-dev/macos-automation-skills --skill macos-automation
+```
+
+### Option 2: Copy manually
+
+```bash
+# Claude Code
+cp -r skills/* ~/.claude/skills/
+
+# Codex
+cp -r skills/* ~/.codex/skills/
+
+# Project-level
+cp -r skills/* .agents/skills/
+```
+
+## Quick Start
+
+```bash
+cd skills/macos-automation
+
+# environment check
+python scripts/check_env.py --prewarm-ax
+
+# list tools
+python scripts/macos_automation.py list-tools
+
+# inspect input schema for one tool
+python scripts/macos_automation.py describe-tool --tool run_macos_script
+
+# call a semantic tool
+python scripts/macos_automation.py call --tool get_frontmost_app --input-json '{}'
+
+# run raw script
+python scripts/macos_automation.py call \
+  --tool run_macos_script \
+  --input-json '{"script_content":"return \"ok\""}'
+```
+
+## Available Skills
+
+| Skill | Description | Main Triggers |
+|-------|-------------|---------------|
+| [`macos-automation`](./skills/macos-automation/SKILL.md) | End-to-end macOS automation execution with templates + raw scripts + AX | AppleScript, JXA, Finder, Shortcuts, Notes, Mail, Messages, UI automation |
+
+## Capability Surface
+
+`macos-automation` provides:
+
+- 39 callable tools (core + semantic template tools)
+- Unified dispatcher (`scripts/macos_automation.py`)
+- Template search / render / execute pipeline
+- Raw AppleScript/JXA execution with safety modes (`strict` / `balanced` / `off`)
+- AX dependency prewarm + runtime fallback installation
+- Machine-readable schema catalog for client autocomplete and validation
+
+## Repository Layout
 
 ```text
 skills/
@@ -14,22 +85,12 @@ skills/
     assets/
 ```
 
-## 安装方式
+## Documentation
 
-```bash
-# 列出本仓库可安装的 skills
-npx skills add dvlin-dev/macos-automation-skills --list
-
-# 安装指定 skill
-npx skills add dvlin-dev/macos-automation-skills --skill macos-automation
-```
-
-## 技能说明
-
-- `macos-automation`
-  - 完整覆盖 macOS 自动化工具面（39 个工具名入口）
-  - 统一调度入口：`scripts/macos_automation.py`
-  - 提供机器可读 schema：`assets/tool-schemas.json`
-  - 模板检索 / 渲染 / 执行与原始脚本执行双模式
-  - 环境预检、权限探测、风险分级控制（strict / balanced / off）
-  - AX 可执行文件检查与运行时自动下载兜底
+- Skill instructions: [`skills/macos-automation/SKILL.md`](./skills/macos-automation/SKILL.md)
+- Tool surface: [`skills/macos-automation/references/tool-surface.md`](./skills/macos-automation/references/tool-surface.md)
+- Coverage matrix: [`skills/macos-automation/references/coverage-matrix.md`](./skills/macos-automation/references/coverage-matrix.md)
+- Config matrix: [`skills/macos-automation/references/config-matrix.md`](./skills/macos-automation/references/config-matrix.md)
+- AX strategy: [`skills/macos-automation/references/ax-strategy.md`](./skills/macos-automation/references/ax-strategy.md)
+- Tool schema docs: [`skills/macos-automation/references/tool-schemas.md`](./skills/macos-automation/references/tool-schemas.md)
+- Generated schema JSON: [`skills/macos-automation/assets/tool-schemas.json`](./skills/macos-automation/assets/tool-schemas.json)

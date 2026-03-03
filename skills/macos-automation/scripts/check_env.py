@@ -60,6 +60,7 @@ def check_environment(
     ax_binary_path: str,
     ax_auto_install: bool | str,
     ax_download_url: str,
+    ax_download_sha256: str | None,
     ax_cache_dir: str,
 ) -> dict[str, Any]:
     checks: list[dict[str, Any]] = []
@@ -90,6 +91,7 @@ def check_environment(
             ax_binary_path=ax_binary_path,
             auto_install=parse_bool(ax_auto_install, default=True),
             download_url_template=ax_download_url.strip() or None,
+            download_sha256=(ax_download_sha256 or "").strip() or None,
             cache_dir=ax_cache_dir,
             timeout_seconds=15,
         )
@@ -149,6 +151,11 @@ def parse_args() -> argparse.Namespace:
         default=os.getenv("MACOS_KIT_AX_CACHE_DIR", "~/.cache/macos-automation-skill/bin"),
         help="AX 缓存目录",
     )
+    parser.add_argument(
+        "--ax-download-sha256",
+        default=os.getenv("MACOS_KIT_AX_DOWNLOAD_SHA256", ""),
+        help="AX 下载内容 SHA256（可选）",
+    )
     return parser.parse_args()
 
 
@@ -159,6 +166,7 @@ def main() -> int:
         ax_binary_path=args.ax_binary_path,
         ax_auto_install=args.ax_auto_install,
         ax_download_url=args.ax_download_url,
+        ax_download_sha256=args.ax_download_sha256,
         ax_cache_dir=args.ax_cache_dir,
     )
     print_json(result)

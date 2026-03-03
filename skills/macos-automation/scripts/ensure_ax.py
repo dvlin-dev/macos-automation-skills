@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import argparse
+import hashlib
 import os
 import platform
 import stat
@@ -46,10 +47,26 @@ def resolve_ax_binary(configured: str) -> str | None:
     return None
 
 
+def normalize_sha256(value: str | None) -> str | None:
+    if not value:
+        return None
+    candidate = value.strip().lower()
+    if len(candidate) != 64:
+        return None
+    if any(ch not in "0123456789abcdef" for ch in candidate):
+        return None
+    return candidate
+
+
+def calculate_sha256(content: bytes) -> str:
+    return hashlib.sha256(content).hexdigest()
+
+
 def download_ax_binary(
     download_url_template: str,
     cache_dir: str,
     timeout_seconds: int,
+    expected_sha256: str | None,
 ) -> tuple[str | None, str]:
     if platform.system().lower() != "darwin":
         return None, "当前平台不是 macOS，跳过自动下载"
@@ -72,6 +89,13 @@ def download_ax_binary(
         with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
             content = response.read()
 
+        actual_sha256 = calculate_sha256(content)
+        if expected_sha256 and actual_sha256 != expected_sha256:
+            return (
+                None,
+                f"AX 下载内容校验失败，期望 SHA256={expected_sha256}，实际 SHA256={actual_sha256}",
+            )
+
         with tempfile.NamedTemporaryFile(delete=False, dir=resolved_cache_dir) as temp_file:
             temp_file.write(content)
             temp_path = Path(temp_file.name)
@@ -89,9 +113,19 @@ def ensure_ax_binary(
     ax_binary_path: str,
     auto_install: bool,
     download_url_template: str | None,
+    download_sha256: str | None,
     cache_dir: str,
     timeout_seconds: int,
 ) -> dict:
+    normalized_sha256 = normalize_sha256(download_sha256)
+    if download_sha256 and not normalized_sha256:
+        return build_failure(
+            "INVALID_INPUT",
+            "MACOS_KIT_AX_DOWNLOAD_SHA256 不是合法的 SHA256 值",
+            hint="请提供 64 位十六进制字符串",
+            retryable=False,
+        )
+
     resolved = resolve_ax_binary(ax_binary_path)
     if resolved:
         return build_success(
@@ -122,6 +156,7 @@ def ensure_ax_binary(
         download_url_template=download_url_template,
         cache_dir=cache_dir,
         timeout_seconds=timeout_seconds,
+        expected_sha256=normalized_sha256,
     )
     if not downloaded_path:
         return build_failure(
@@ -163,6 +198,11 @@ def parse_args() -> argparse.Namespace:
         help="AX 缓存目录",
     )
     parser.add_argument(
+        "--ax-download-sha256",
+        default=os.getenv("MACOS_KIT_AX_DOWNLOAD_SHA256", ""),
+        help="AX 下载内容的 SHA256 校验值（可选）",
+    )
+    parser.add_argument(
         "--timeout-seconds",
         type=int,
         default=DEFAULT_TIMEOUT_SECONDS,
@@ -177,6 +217,7 @@ def main() -> int:
         ax_binary_path=args.ax_binary_path,
         auto_install=parse_bool(args.ax_auto_install, default=True),
         download_url_template=args.ax_download_url.strip() or None,
+        download_sha256=args.ax_download_sha256.strip() or None,
         cache_dir=args.ax_cache_dir,
         timeout_seconds=max(1, args.timeout_seconds),
     )

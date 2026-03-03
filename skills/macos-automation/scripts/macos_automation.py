@@ -7,7 +7,7 @@ import os
 from pathlib import Path
 from typing import Any
 
-from _shared import build_failure, build_success, print_json
+from _shared import build_failure, build_success, parse_bool, print_json
 from accessibility_query import execute_accessibility_query
 from check_env import check_environment
 from run_macos_script import execute_script
@@ -156,12 +156,16 @@ def execute_tool(
 
     if tool_name == "check_macos_permissions":
         return check_environment(
-            prewarm_ax=bool(payload.get("prewarm_ax", False)),
+            prewarm_ax=parse_bool(payload.get("prewarm_ax"), default=False),
             ax_binary_path=str(payload.get("ax_binary_path") or os.getenv("MACOS_KIT_AX_BINARY_PATH", "ax")),
             ax_auto_install=payload.get("ax_auto_install")
             if payload.get("ax_auto_install") is not None
             else os.getenv("MACOS_KIT_AX_AUTO_INSTALL", "true"),
             ax_download_url=str(payload.get("ax_download_url") or os.getenv("MACOS_KIT_AX_DOWNLOAD_URL", "")),
+            ax_download_sha256=str(
+                payload.get("ax_download_sha256")
+                or os.getenv("MACOS_KIT_AX_DOWNLOAD_SHA256", "")
+            ),
             ax_cache_dir=str(
                 payload.get("ax_cache_dir")
                 or os.getenv("MACOS_KIT_AX_CACHE_DIR", "~/.cache/macos-automation-skill/bin")
@@ -181,6 +185,10 @@ def execute_tool(
             if payload.get("ax_auto_install") is not None
             else os.getenv("MACOS_KIT_AX_AUTO_INSTALL", "true"),
             ax_download_url=str(payload.get("ax_download_url") or os.getenv("MACOS_KIT_AX_DOWNLOAD_URL", "")),
+            ax_download_sha256=str(
+                payload.get("ax_download_sha256")
+                or os.getenv("MACOS_KIT_AX_DOWNLOAD_SHA256", "")
+            ),
             ax_cache_dir=str(
                 payload.get("ax_cache_dir")
                 or os.getenv("MACOS_KIT_AX_CACHE_DIR", "~/.cache/macos-automation-skill/bin")
