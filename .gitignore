@@ -1,3 +1,8 @@
 *.skill
 __pycache__/
 .DS_Store
+
+# Local draft files for commit/PR authoring
+.gitmessage*
+.commitmsg*
+*.pr-body.md
